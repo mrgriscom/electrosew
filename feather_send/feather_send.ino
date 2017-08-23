@@ -243,18 +243,18 @@ void say(String s, String t, String u, String v) {
 }
 
 // production - burning man
-/*
-#define MAN_LAT 40786400
-#define MAN_LON -119206500
+#define MAN_LAT 40786600
+#define MAN_LON -119206600
 #define PLAYA_ELEV 1190.  // m
 #define SCALE 1.
-*/
 
 // production - afrikaburn
+/*
 #define MAN_LAT -32327403
 #define MAN_LON 19745329
 #define PLAYA_ELEV 320.  // m
 #define SCALE 1.
+*/
 
 // testing
 /*
@@ -320,8 +320,8 @@ String fmtPlayaStr(int32_t lat, int32_t lon, bool accurate) {
 #define CLOCK_MINUTES (12 * 60)
 #define METERS_PER_DEGREE (40030230. / 360.)
 // Direction of north in clock units
-//#define NORTH 10.5  // hours
-//#define NUM_RINGS 13  // Esplanade through L
+#define NORTH 10.5  // hours
+#define NUM_RINGS 13  // Esplanade through L
 #define ESPLANADE_RADIUS (2500 * .3048)  // m
 #define FIRST_BLOCK_DEPTH (440 * .3048)  // m
 #define BLOCK_DEPTH (240 * .3048)  // m
@@ -333,8 +333,8 @@ String fmtPlayaStr(int32_t lat, int32_t lon, bool accurate) {
 #define RADIAL_BUFFER .25  // hours
 
 //// overrides for afrikaburn
-#define NORTH 3.3333  // make 6ish approx line up with bearing 80 deg
-#define NUM_RINGS 0  // only give distance relative to clan
+//#define NORTH 3.3333  // make 6ish approx line up with bearing 80 deg
+//#define NUM_RINGS 0  // only give distance relative to clan
 
 
 // 0=man, 1=espl, 2=A, 3=B, ...
