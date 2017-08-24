@@ -1,9 +1,6 @@
-#include <SPI.h>
 #include <RH_RF95.h>
-
-#include <Wire.h>
-#include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <TinyGPS.h>
 
 Adafruit_SSD1306 display = Adafruit_SSD1306();
 
@@ -37,10 +34,10 @@ bool sending = false;
 
 #define ACCURACY_THRESHOLD 30  // m
 
-// tinyGPS
-#include <TinyGPS.h>
-
 TinyGPS gps;
+
+#define CALLSIGN_LEN 4
+char callsign[CALLSIGN_LEN + 1] = {'D', 'R', 'E', 'W', 0x0};
 
 void setup() {
   pinMode(RFM95_RST, OUTPUT);
@@ -54,7 +51,7 @@ void setup() {
 
   // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
-  say("hello.", "", "", "");
+  say("hello " + String(callsign) + ".", "", "", "");
   delay(3000);
   display.clearDisplay();
 
@@ -65,13 +62,13 @@ void setup() {
   delay(10);
 
   while (!rf95.init()) {
-    say("LoRa radio init failed", "", "", "");
+    say("x0", "", "", "");
     while (1);
   }
 
   // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM
   if (!rf95.setFrequency(RF95_FREQ)) {
-    say("setFrequency failed", "", "", "");
+    say("x1", "", "", "");
     while (1);
   }
 
@@ -82,12 +79,12 @@ void setup() {
   // you can set transmitter powers from 5 to 23 dBm:
   rf95.setTxPower(23, false);
 
-  Serial.begin(9600);
+  //Serial.begin(9600);
   Serial1.begin(9600);
 }
 
 #define MAGIC_NUMBER_LEN 2
-uint8_t MAGIC_NUMBER[MAGIC_NUMBER_LEN] = {0x02, 0xcb};
+uint8_t MAGIC_NUMBER[MAGIC_NUMBER_LEN] = {0x2c, 0x0b};
 
 //String timeStr = "";
 uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
@@ -103,6 +100,7 @@ int32_t theirLat;
 int32_t theirLon;
 float theirElev;  // unused
 bool areTheyAccurate;
+char theirCallsign[CALLSIGN_LEN + 1] = {0x0, 0x0, 0x0, 0x0, 0x0}; // final null will never be overwritten
 
 void processRecv() {
   for (int i = 0; i < MAGIC_NUMBER_LEN; i++) {
@@ -110,7 +108,10 @@ void processRecv() {
       return;
     }
   }
-  void* p = buf + MAGIC_NUMBER_LEN;
+  for (int i = 0; i < CALLSIGN_LEN; i++) {
+    theirCallsign[i] = buf[MAGIC_NUMBER_LEN + i];
+  }
+  void* p = buf + MAGIC_NUMBER_LEN + CALLSIGN_LEN;
   theirLat = *(int32_t*)p;
   p = (int32_t*)p + 1;
   theirLon = *(int32_t*)p;
@@ -126,12 +127,15 @@ void transmitData() {
     return;
   }
 
-  uint8_t len = 2 * sizeof(int32_t) + sizeof(uint8_t) + MAGIC_NUMBER_LEN + 1;
+  uint8_t len = 2 * sizeof(int32_t) + sizeof(uint8_t) + CALLSIGN_LEN + MAGIC_NUMBER_LEN + 1;
   uint8_t radiopacket[len];
   for (int i = 0; i < MAGIC_NUMBER_LEN; i++) {
     radiopacket[i] = MAGIC_NUMBER[i];
   }
-  void* p = radiopacket + MAGIC_NUMBER_LEN;
+  for (int i = 0; i < CALLSIGN_LEN; i++) {
+    radiopacket[MAGIC_NUMBER_LEN + i] = callsign[i];
+  }
+  void* p = radiopacket + MAGIC_NUMBER_LEN + CALLSIGN_LEN;
   *(int32_t*)p = myLat;
   p = (int32_t*)p + 1;
   *(int32_t*)p = myLon;
@@ -149,7 +153,6 @@ void transmitData() {
 void loop() {
   if (Serial1.available()) {
     char c = Serial1.read();
-    //Serial.write(c);
     if (gps.encode(c)) { // Did a new valid sentence come in?
       attemptUpdateFix();
     }
@@ -206,10 +209,10 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  display.println(fmtPlayaStr(theirLat, theirLon, areTheyAccurate));
+  display.println(fmtPlayaStr(theirCallsign, theirLat, theirLon, areTheyAccurate));
   display.println(fixAge());
   display.println();
-  display.println(fmtPlayaStr(myLat, myLon, amIAccurate));
+  display.println(fmtPlayaStr(callsign, myLat, myLon, amIAccurate));
   display.setCursor(60, 8);
   display.println(String(lastRSSI) + "db");
 
@@ -298,11 +301,11 @@ void setFix () {
   amIAccurate = (myHAcc > 0 && myHAcc <= ACCURACY_THRESHOLD);
 }
 
-String fmtPlayaStr(int32_t lat, int32_t lon, bool accurate) {
+String fmtPlayaStr(char callsign[], int32_t lat, int32_t lon, bool accurate) {
   if (lat == 0 && lon == 0) {
     return "404 cosmos not found";
   } else {
-    return playaStr(lat, lon, accurate);
+    return String(callsign) + " " + playaStr(lat, lon, accurate);
   }
 }
 
@@ -365,9 +368,7 @@ float ringInnerBuffer(int n) {
 
 int getReferenceRing(float dist) {
   for (int n = NUM_RINGS; n > 0; n--) {
-    Serial.println(n + ":" + String(ringRadius(n)) + " " + String(ringInnerBuffer(n)));
     if (ringRadius(n) - ringInnerBuffer(n) <= dist) {
-
       return n;
     }
   }
