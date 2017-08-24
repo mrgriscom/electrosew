@@ -26,7 +26,7 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 #define TRANSMIT_INTERVAL 10000      // interval between sending updates
 #define DISPLAY_INTERVAL 150      // interval between updating display
 #define MAX_FIX_AGE 5000   // Ignore data from GPS if older than this
-unsigned long lastSend, lastDisplay, lastFix, lastRecv;
+unsigned long lastSend, lastDisplay, lastFix;
 bool sending = false;
 
 // 95% error radius at HDOP=1
@@ -37,9 +37,28 @@ bool sending = false;
 TinyGPS gps;
 
 #define CALLSIGN_LEN 4
-char callsign[CALLSIGN_LEN + 1] = {'D', 'R', 'E', 'W', 0x0};
+
+typedef struct {
+  char callsign[CALLSIGN_LEN + 1] = {0x0, 0x0, 0x0, 0x0, 0x0}; // final null will never be overwritten
+  unsigned long timestamp;
+  // lat/lon are stored as signed 32-bit ints as millionths of a degree (-123.45678 => -123,456,780)
+  int32_t lat;
+  int32_t lon;
+  float elev;  // unused
+  float hAcc;
+  bool isAccurate;
+  int rssi;
+} fix;
+
+fix myLoc;
+fix theirLoc;
 
 void setup() {
+  myLoc.callsign[0] = 'R';
+  myLoc.callsign[1] = 'O';
+  myLoc.callsign[2] = 'V';
+  myLoc.callsign[3] = 'R';
+
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
@@ -51,7 +70,7 @@ void setup() {
 
   // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
-  say("hello " + String(callsign) + ".", "", "", "");
+  say("hello " + String(myLoc.callsign) + ".", "", "", "");
   delay(3000);
   display.clearDisplay();
 
@@ -86,21 +105,7 @@ void setup() {
 #define MAGIC_NUMBER_LEN 2
 uint8_t MAGIC_NUMBER[MAGIC_NUMBER_LEN] = {0x2c, 0x0b};
 
-//String timeStr = "";
 uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-int lastRSSI;
-
-// lat/lon are stored as signed 32-bit ints as millionths of a degree (-123.45678 => -123,456,780)
-int32_t myLat;
-int32_t myLon;
-float myElev;  // unused
-float myHAcc;
-bool amIAccurate;
-int32_t theirLat;
-int32_t theirLon;
-float theirElev;  // unused
-bool areTheyAccurate;
-char theirCallsign[CALLSIGN_LEN + 1] = {0x0, 0x0, 0x0, 0x0, 0x0}; // final null will never be overwritten
 
 void processRecv() {
   for (int i = 0; i < MAGIC_NUMBER_LEN; i++) {
@@ -109,15 +114,16 @@ void processRecv() {
     }
   }
   for (int i = 0; i < CALLSIGN_LEN; i++) {
-    theirCallsign[i] = buf[MAGIC_NUMBER_LEN + i];
+    theirLoc.callsign[i] = buf[MAGIC_NUMBER_LEN + i];
   }
   void* p = buf + MAGIC_NUMBER_LEN + CALLSIGN_LEN;
-  theirLat = *(int32_t*)p;
+  theirLoc.lat = *(int32_t*)p;
   p = (int32_t*)p + 1;
-  theirLon = *(int32_t*)p;
+  theirLoc.lon = *(int32_t*)p;
   p = (int32_t*)p + 1;
-  areTheyAccurate = *(uint8_t*)p;
-  lastRecv = millis();
+  theirLoc.isAccurate = *(uint8_t*)p;
+  theirLoc.timestamp = millis();
+  theirLoc.rssi = rf95.lastRssi();
 }
 
 void transmitData() {
@@ -133,14 +139,14 @@ void transmitData() {
     radiopacket[i] = MAGIC_NUMBER[i];
   }
   for (int i = 0; i < CALLSIGN_LEN; i++) {
-    radiopacket[MAGIC_NUMBER_LEN + i] = callsign[i];
+    radiopacket[MAGIC_NUMBER_LEN + i] = myLoc.callsign[i];
   }
   void* p = radiopacket + MAGIC_NUMBER_LEN + CALLSIGN_LEN;
-  *(int32_t*)p = myLat;
+  *(int32_t*)p = myLoc.lat;
   p = (int32_t*)p + 1;
-  *(int32_t*)p = myLon;
+  *(int32_t*)p = myLoc.lon;
   p = (int32_t*)p + 1;
-  *(uint8_t*)p = amIAccurate;
+  *(uint8_t*)p = myLoc.isAccurate;
   radiopacket[len - 1] = '\0';
 
   sending = true;
@@ -161,7 +167,6 @@ void loop() {
   if (rf95.available()) {
     uint8_t len = sizeof(buf);
     if (rf95.recv(buf, &len)) {
-      lastRSSI = rf95.lastRssi();
       digitalWrite(LED, HIGH);
       digitalWrite(LED, LOW);
       processRecv();
@@ -186,7 +191,7 @@ void attemptUpdateFix() {
 }
 
 String fixAge() {
-  long elapsed = (millis() - lastRecv) / 1000;
+  long elapsed = (millis() - theirLoc.timestamp) / 1000;
   int n;
   char unit;
   if (elapsed < 2) {
@@ -209,12 +214,12 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  display.println(fmtPlayaStr(theirCallsign, theirLat, theirLon, areTheyAccurate));
+  display.println(fmtPlayaStr(theirLoc.callsign, theirLoc.lat, theirLoc.lon, theirLoc.isAccurate));
   display.println(fixAge());
   display.println();
-  display.println(fmtPlayaStr(callsign, myLat, myLon, amIAccurate));
+  display.println(fmtPlayaStr(myLoc.callsign, myLoc.lat, myLoc.lon, myLoc.isAccurate));
   display.setCursor(60, 8);
-  display.println(String(lastRSSI) + "db");
+  display.println(String(theirLoc.rssi) + "db");
 
   String fixStatus = "";
   long sinceLastFix = millis() - lastFix;
@@ -290,15 +295,15 @@ void setFix () {
     lon = 0;
   }
 //  Serial.println(String(flat, 6) + " " + String(flon, 6));
-  myLat = lat;
-  myLon = lon;
+  myLoc.lat = lat;
+  myLoc.lon = lon;
 
   if (gps.hdop() == TinyGPS::GPS_INVALID_HDOP) {
-    myHAcc = -1;
+    myLoc.hAcc = -1;
   } else {
-    myHAcc = 1e-2 * gps.hdop() * GPS_BASE_ACCURACY;
+    myLoc.hAcc = 1e-2 * gps.hdop() * GPS_BASE_ACCURACY;
   }
-  amIAccurate = (myHAcc > 0 && myHAcc <= ACCURACY_THRESHOLD);
+  myLoc.isAccurate = (myLoc.hAcc > 0 && myLoc.hAcc <= ACCURACY_THRESHOLD);
 }
 
 String fmtPlayaStr(char callsign[], int32_t lat, int32_t lon, bool accurate) {
