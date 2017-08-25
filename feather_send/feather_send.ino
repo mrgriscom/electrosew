@@ -41,6 +41,8 @@ TinyGPS gps;
 #define CALLSIGN_LEN 4
 
 bool buttonPressedState = false;
+long lastButtonPress = 0;
+#define buttonDebounceLockout 100
 
 typedef struct {
   char callsign[CALLSIGN_LEN + 1] = {0x0, 0x0, 0x0, 0x0, 0x0}; // final null will never be overwritten
@@ -163,7 +165,7 @@ void transmitData() {
   for (int i = 0; i < CALLSIGN_LEN; i++) {
     radiopacket[MAGIC_NUMBER_LEN + i] = myLoc.callsign[i];
 
-    if (numVirtualTrackers > 1 && i == CALLSIGN_LEN - 1) {
+    if (numVirtualTrackers > 1 && i == strlen(myLoc.callsign) - 1) {
       radiopacket[MAGIC_NUMBER_LEN + i] += virtualTrackerNum;
       virtualTrackerNum = (virtualTrackerNum + 1) % numVirtualTrackers;
     }
@@ -185,13 +187,21 @@ void transmitData() {
 
 void loop() {
   bool buttonPressed = !digitalRead(Cpin);
-  if (buttonPressed && !buttonPressedState) {
-    int count = getNumTrackers();
-    if (count > 0) {
-      activeLoc = (activeLoc + 1) % count;
+  if (buttonPressed != buttonPressedState) {
+    // button state change
+    if (millis() - lastButtonPress > buttonDebounceLockout) {
+      // state change is not noise
+      if (buttonPressed) {
+        // button is pressed -- trigger action
+        int count = getNumTrackers();
+        if (count > 0) {
+          activeLoc = (activeLoc + 1) % count;
+        }   
+      }
     }
+    lastButtonPress = millis();
   }
-  buttonPressedState = buttonPressed;
+  buttonPressedState = buttonPressed;  
   
   if (Serial1.available()) {
     char c = Serial1.read();
@@ -249,17 +259,21 @@ String fixAge(unsigned long timestamp) {
 #define LINE_LEN 20
 void updateDisplay() {
   fix theirLoc = otherLocs[activeLoc];
+  int count = getNumTrackers();
   
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
   display.println(getCallsigns());
-  display.println(fmtPlayaStr(&theirLoc));
-  display.println(fixAge(theirLoc.timestamp));
-  display.println(fmtPlayaStr(&myLoc));
-  display.setCursor(60, 2*LINE_PX);
-  display.println(String(theirLoc.rssi) + "db");
+  if (count > 0) {
+    display.println(fmtPlayaStr(&theirLoc, ""));
+    display.println(fixAge(theirLoc.timestamp));
+    display.setCursor(60, 2*LINE_PX);
+    display.println(String(theirLoc.rssi) + "db");
+  }
+  display.setCursor(0, 3*LINE_PX);
+  display.println(fmtPlayaStr(&myLoc, "and lost"));
 
   String fixStatus = "";
   long sinceLastFix = millis() - lastFix;
@@ -385,9 +399,9 @@ void setFix () {
   myLoc.isAccurate = (myLoc.hAcc > 0 && myLoc.hAcc <= ACCURACY_THRESHOLD);
 }
 
-String fmtPlayaStr(fix* loc) {
+String fmtPlayaStr(fix* loc, char nofixstr[]) {
   if (loc->lat == 0 && loc->lon == 0) {
-    return "";
+    return nofixstr;
   } else {
     return playaStr(loc->lat, loc->lon, loc->isAccurate);
   }
