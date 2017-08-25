@@ -34,9 +34,13 @@ bool sending = false;
 
 #define ACCURACY_THRESHOLD 30  // m
 
+#define OTHER_LOC_STALENESS 120000
+
 TinyGPS gps;
 
 #define CALLSIGN_LEN 4
+
+bool buttonPressedState = false;
 
 typedef struct {
   char callsign[CALLSIGN_LEN + 1] = {0x0, 0x0, 0x0, 0x0, 0x0}; // final null will never be overwritten
@@ -55,11 +59,11 @@ fix myLoc;
 fix otherLocs[MAX_OTHER_TRACKERS];
 int activeLoc = 0;
 
+char callsign[] = "SPKL";
+//char callsign[] = "PONY";
+
 void setup() {
-  myLoc.callsign[0] = 'R';
-  myLoc.callsign[1] = 'O';
-  myLoc.callsign[2] = 'V';
-  myLoc.callsign[3] = 'R';
+  strcpy(myLoc.callsign, callsign);
 
   pinMode(Cpin, INPUT_PULLUP);
 
@@ -140,7 +144,10 @@ void processRecv() {
   otherLocs[slot] = theirLoc;
 }
 
-int k = 0;
+// set > 1 to simulate more than one tracker for testing purposes
+int numVirtualTrackers = 4;
+int virtualTrackerNum = 0;
+
 void transmitData() {
   long sinceLastFix = millis() - lastFix;
   if (sinceLastFix > MAX_FIX_AGE) {
@@ -155,10 +162,10 @@ void transmitData() {
   }
   for (int i = 0; i < CALLSIGN_LEN; i++) {
     radiopacket[MAGIC_NUMBER_LEN + i] = myLoc.callsign[i];
-    // testing
-    if (i == 3) {
-      radiopacket[MAGIC_NUMBER_LEN + i] += k;
-      k = (k + 1) % 4;
+
+    if (numVirtualTrackers > 1 && i == CALLSIGN_LEN - 1) {
+      radiopacket[MAGIC_NUMBER_LEN + i] += virtualTrackerNum;
+      virtualTrackerNum = (virtualTrackerNum + 1) % numVirtualTrackers;
     }
   }
   void* p = radiopacket + MAGIC_NUMBER_LEN + CALLSIGN_LEN;
@@ -177,12 +184,14 @@ void transmitData() {
 }
 
 void loop() {
-  if (!digitalRead(Cpin)) {
+  bool buttonPressed = !digitalRead(Cpin);
+  if (buttonPressed && !buttonPressedState) {
     int count = getNumTrackers();
     if (count > 0) {
       activeLoc = (activeLoc + 1) % count;
     }
   }
+  buttonPressedState = buttonPressed;
   
   if (Serial1.available()) {
     char c = Serial1.read();
@@ -290,7 +299,13 @@ String getCallsigns() {
     if (i == 0) {
       s.concat(">");
     }
-    s.concat(otherLocs[slot].callsign);
+    String cs = String(otherLocs[slot].callsign);
+    if (millis() - otherLocs[slot].timestamp > OTHER_LOC_STALENESS) {
+      cs.toLowerCase();
+    } else {
+      cs.toUpperCase();
+    }
+    s.concat(cs);
     //if (i == 0) {
     //  s.concat("]");
     //}
