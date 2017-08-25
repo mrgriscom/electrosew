@@ -53,12 +53,15 @@ typedef struct {
 fix myLoc;
 #define MAX_OTHER_TRACKERS 5
 fix otherLocs[MAX_OTHER_TRACKERS];
+int activeLoc = 0;
 
 void setup() {
   myLoc.callsign[0] = 'R';
   myLoc.callsign[1] = 'O';
   myLoc.callsign[2] = 'V';
   myLoc.callsign[3] = 'R';
+
+  pinMode(Cpin, INPUT_PULLUP);
 
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
@@ -126,7 +129,15 @@ void processRecv() {
   theirLoc.isAccurate = *(uint8_t*)p;
   theirLoc.timestamp = millis();
   theirLoc.rssi = rf95.lastRssi();
-  otherLocs[0] = theirLoc;
+
+  int slot = 0; // will displace first if all slots are full
+  for (int i = 0; i < MAX_OTHER_TRACKERS; i++) {
+    if (strlen(otherLocs[i].callsign) == 0 || strcmp(theirLoc.callsign, otherLocs[i].callsign) == 0) {
+      slot = i;
+      break;      
+    }
+  }
+  otherLocs[slot] = theirLoc;
 }
 
 int k = 0;
@@ -166,6 +177,13 @@ void transmitData() {
 }
 
 void loop() {
+  if (!digitalRead(Cpin)) {
+    int count = getNumTrackers();
+    if (count > 0) {
+      activeLoc = (activeLoc + 1) % count;
+    }
+  }
+  
   if (Serial1.available()) {
     char c = Serial1.read();
     if (gps.encode(c)) { // Did a new valid sentence come in?
@@ -219,14 +237,15 @@ String fixAge(unsigned long timestamp) {
 }
 
 #define LINE_PX 8
+#define LINE_LEN 20
 void updateDisplay() {
-  fix theirLoc = otherLocs[0];
+  fix theirLoc = otherLocs[activeLoc];
   
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  display.println(theirLoc.callsign);
+  display.println(getCallsigns());
   display.println(fmtPlayaStr(&theirLoc));
   display.println(fixAge(theirLoc.timestamp));
   display.println(fmtPlayaStr(&myLoc));
@@ -248,6 +267,39 @@ void updateDisplay() {
   display.display();
 
   lastDisplay = millis();
+}
+
+int getNumTrackers() {
+  int i;
+  for (i = 0; i < MAX_OTHER_TRACKERS; i++) {
+    if (strlen(otherLocs[i].callsign) == 0) {
+      break;
+    }
+  }
+  return i;
+}
+
+String getCallsigns() {
+  int count = getNumTrackers();
+  if (count == 0) {
+    return "all alone";
+  }
+  String s = "";
+  for (int i = 0; i < count; i++) {
+    int slot = (activeLoc + i) % count;
+    if (i == 0) {
+      s.concat(">");
+    }
+    s.concat(otherLocs[slot].callsign);
+    //if (i == 0) {
+    //  s.concat("]");
+    //}
+    s.concat(" ");
+    if (s.length() > LINE_LEN) {
+      break;
+    }
+  }
+  return s.substring(0, LINE_LEN);
 }
 
 void say(String s, String t, String u, String v) {
@@ -320,7 +372,7 @@ void setFix () {
 
 String fmtPlayaStr(fix* loc) {
   if (loc->lat == 0 && loc->lon == 0) {
-    return "404 cosmos not found";
+    return "";
   } else {
     return playaStr(loc->lat, loc->lon, loc->isAccurate);
   }
