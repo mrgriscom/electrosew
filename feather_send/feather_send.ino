@@ -147,7 +147,7 @@ void processRecv() {
 }
 
 // set > 1 to simulate more than one tracker for testing purposes
-int numVirtualTrackers = 4;
+int numVirtualTrackers = 1;
 int virtualTrackerNum = 0;
 
 void transmitData() {
