@@ -51,7 +51,8 @@ typedef struct {
 } fix;
 
 fix myLoc;
-fix theirLoc;
+#define MAX_OTHER_TRACKERS 5
+fix otherLocs[MAX_OTHER_TRACKERS];
 
 void setup() {
   myLoc.callsign[0] = 'R';
@@ -113,6 +114,7 @@ void processRecv() {
       return;
     }
   }
+  fix theirLoc;
   for (int i = 0; i < CALLSIGN_LEN; i++) {
     theirLoc.callsign[i] = buf[MAGIC_NUMBER_LEN + i];
   }
@@ -124,8 +126,10 @@ void processRecv() {
   theirLoc.isAccurate = *(uint8_t*)p;
   theirLoc.timestamp = millis();
   theirLoc.rssi = rf95.lastRssi();
+  otherLocs[0] = theirLoc;
 }
 
+int k = 0;
 void transmitData() {
   long sinceLastFix = millis() - lastFix;
   if (sinceLastFix > MAX_FIX_AGE) {
@@ -140,6 +144,11 @@ void transmitData() {
   }
   for (int i = 0; i < CALLSIGN_LEN; i++) {
     radiopacket[MAGIC_NUMBER_LEN + i] = myLoc.callsign[i];
+    // testing
+    if (i == 3) {
+      radiopacket[MAGIC_NUMBER_LEN + i] += k;
+      k = (k + 1) % 4;
+    }
   }
   void* p = radiopacket + MAGIC_NUMBER_LEN + CALLSIGN_LEN;
   *(int32_t*)p = myLoc.lat;
@@ -190,8 +199,8 @@ void attemptUpdateFix() {
   setFix();
 }
 
-String fixAge() {
-  long elapsed = (millis() - theirLoc.timestamp) / 1000;
+String fixAge(unsigned long timestamp) {
+  long elapsed = (millis() - timestamp) / 1000;
   int n;
   char unit;
   if (elapsed < 2) {
@@ -209,16 +218,19 @@ String fixAge() {
   return String(n) + String(unit) + " ago";
 }
 
+#define LINE_PX 8
 void updateDisplay() {
+  fix theirLoc = otherLocs[0];
+  
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  display.println(fmtPlayaStr(theirLoc.callsign, theirLoc.lat, theirLoc.lon, theirLoc.isAccurate));
-  display.println(fixAge());
-  display.println();
-  display.println(fmtPlayaStr(myLoc.callsign, myLoc.lat, myLoc.lon, myLoc.isAccurate));
-  display.setCursor(60, 8);
+  display.println(theirLoc.callsign);
+  display.println(fmtPlayaStr(&theirLoc));
+  display.println(fixAge(theirLoc.timestamp));
+  display.println(fmtPlayaStr(&myLoc));
+  display.setCursor(60, 2*LINE_PX);
   display.println(String(theirLoc.rssi) + "db");
 
   String fixStatus = "";
@@ -230,7 +242,7 @@ void updateDisplay() {
   } else if (sending || (sinceLastSend >= 0 && sinceLastSend < 400)) {
     fixStatus = ".";
   }
-  display.setCursor(120, 24);
+  display.setCursor(120, 3*LINE_PX);
   display.println(fixStatus);
 
   display.display();
@@ -306,11 +318,11 @@ void setFix () {
   myLoc.isAccurate = (myLoc.hAcc > 0 && myLoc.hAcc <= ACCURACY_THRESHOLD);
 }
 
-String fmtPlayaStr(char callsign[], int32_t lat, int32_t lon, bool accurate) {
-  if (lat == 0 && lon == 0) {
+String fmtPlayaStr(fix* loc) {
+  if (loc->lat == 0 && loc->lon == 0) {
     return "404 cosmos not found";
   } else {
-    return String(callsign) + " " + playaStr(lat, lon, accurate);
+    return playaStr(loc->lat, loc->lon, loc->isAccurate);
   }
 }
 
