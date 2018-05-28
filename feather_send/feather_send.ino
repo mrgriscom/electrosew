@@ -29,6 +29,9 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 unsigned long lastSend, lastDisplay, lastFix;
 bool sending = false;
 
+#define DEG_PER_RAD (180. / 3.1415926535)
+#define METERS_PER_DEGREE (40030230. / 360.)
+
 // 95% error radius at HDOP=1
 #define GPS_BASE_ACCURACY 6.2  // m
 
@@ -284,7 +287,7 @@ void updateDisplay() {
   } else if (sending || (sinceLastSend >= 0 && sinceLastSend < 400)) {
     fixStatus = ".";
   }
-  display.setCursor(120, 3*LINE_PX);
+  display.setCursor(120, 2*LINE_PX);
   display.println(fixStatus);
 
   display.display();
@@ -344,18 +347,18 @@ void say(String s, String t, String u, String v) {
 }
 
 // production - burning man
+/*
 #define MAN_LAT 40786600
 #define MAN_LON -119206600
 #define PLAYA_ELEV 1190.  // m
 #define SCALE 1.
+*/
 
 // production - afrikaburn
-/*
-#define MAN_LAT -32327403
-#define MAN_LON 19745329
+#define MAN_LAT -32327910
+#define MAN_LON 19741140
 #define PLAYA_ELEV 320.  // m
 #define SCALE 1.
-*/
 
 // testing
 /*
@@ -403,7 +406,8 @@ String fmtPlayaStr(fix* loc, char nofixstr[]) {
   if (loc->lat == 0 && loc->lon == 0) {
     return nofixstr;
   } else {
-    return playaStr(loc->lat, loc->lon, loc->isAccurate);
+    return XYStr(loc->lat, loc->lon, loc->isAccurate);
+    //return playaStr(loc->lat, loc->lon, loc->isAccurate);
   }
 }
 
@@ -415,11 +419,27 @@ String fmtPlayaStr(fix* loc, char nofixstr[]) {
 //  timeStr =  String(hour) + ":" + String(minute) + ":" +  String(second) + "/" + String(age) + "ms";
 //}
 
+
+
+double offset = 5000.;
+String XYStr(int32_t lat, int32_t lon, bool accurate) {
+  // Safe conversion to float w/o precision loss.
+  float dlat = 1e-6 * (lat - MAN_LAT);
+  float dlon = 1e-6 * (lon - MAN_LON);
+
+  float m_dx = dlon * METERS_PER_DEGREE * cos(1e-6 * MAN_LAT / DEG_PER_RAD);
+  float m_dy = dlat * METERS_PER_DEGREE;
+
+  m_dx += offset;
+  m_dy += offset;
+
+  return String("x") + (int)m_dx + String(" y") + (int)m_dy + String(accurate ? "" : " same same");
+}
+
+
 ///// PLAYA COORDINATES CODE /////
 
-#define DEG_PER_RAD (180. / 3.1415926535)
 #define CLOCK_MINUTES (12 * 60)
-#define METERS_PER_DEGREE (40030230. / 360.)
 // Direction of north in clock units
 #define NORTH 10.5  // hours
 #define NUM_RINGS 13  // Esplanade through L
