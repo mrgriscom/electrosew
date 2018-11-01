@@ -34,8 +34,10 @@
 #define CLOCK_PIN 4
 #define BUTTON_PIN 9
 
+#define REFERENCE_LENGTH 36
+
 // A configuration - trinket, apa
-#define STRAND_LENGTH 36
+//#define STRAND_LENGTH 36
 
 // B configuration - nano, apa
 //#define STRAND_LENGTH 30
@@ -44,6 +46,12 @@
 //#define STRAND_LENGTH 60
 //#define DATA_PIN 6
 //#define LED_WS2811
+
+// D configuration - trinket, ws2811 side-mount
+#define STRAND_LENGTH 90
+#define LED_WS2811
+
+float density_scale_factor = (float)STRAND_LENGTH / REFERENCE_LENGTH;
 
 /**
  * Whether the pattern is mirrored, or reversed. This is useful for scarfs where
@@ -151,7 +159,7 @@ void pattern_static() {
 }
 
 void pattern_rainbow_blast(float clock) {
-  float per_pixel_hue_jump = 10;
+  float per_pixel_hue_jump = 10 / density_scale_factor;
   float crawl_speed_factor = 1000;
   
   for (int i = 0; i < STRAND_LENGTH; i++) {
@@ -179,7 +187,7 @@ void pattern_breathe(float clock) {
 void pattern_variable_pulses(float clock) {
   float period = 30; // s
   float peakedness = 3;
-  float min_pulse_width = 5.;
+  float min_pulse_width = 5. * density_scale_factor;
   float max_pulse_width = STRAND_LENGTH * 2.5;
   float crawl_speed_factor = 1;  // around 1 is the sweet spot; changing this too much seems to look much worse
   float min_brightness = .05;
