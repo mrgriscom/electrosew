@@ -348,15 +348,15 @@ void say(String s, String t, String u, String v) {
 
 // production - burning man
 /*
-#define MAN_LAT 40786600
+#define MAN_LAT   40786600
 #define MAN_LON -119206600
 #define PLAYA_ELEV 1190.  // m
 #define SCALE 1.
 */
 
 // production - afrikaburn
-#define MAN_LAT -32327910
-#define MAN_LON 19741140
+#define MAN_LAT -32327080
+#define MAN_LON  19748170
 #define PLAYA_ELEV 320.  // m
 #define SCALE 1.
 
@@ -454,8 +454,8 @@ String XYStr(int32_t lat, int32_t lon, bool accurate) {
 #define RADIAL_BUFFER .25  // hours
 
 //// overrides for afrikaburn
-//#define NORTH 3.3333  // make 6ish approx line up with bearing 80 deg
-//#define NUM_RINGS 0  // only give distance relative to clan
+#define NORTH 3.3333  // make 6ish approx line up with bearing 80 deg
+#define NUM_RINGS 0  // only give distance relative to clan
 
 
 // 0=man, 1=espl, 2=A, 3=B, ...
