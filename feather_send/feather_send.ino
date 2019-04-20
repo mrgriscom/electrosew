@@ -43,10 +43,6 @@ TinyGPS gps;
 
 #define CALLSIGN_LEN 4
 
-bool buttonPressedState = false;
-long lastButtonPress = 0;
-#define buttonDebounceLockout 100
-
 typedef struct {
   char callsign[CALLSIGN_LEN + 1] = {0x0, 0x0, 0x0, 0x0, 0x0}; // final null will never be overwritten
   unsigned long timestamp;
@@ -60,12 +56,26 @@ typedef struct {
 } fix;
 
 fix myLoc;
-#define MAX_OTHER_TRACKERS 5
+#define MAX_OTHER_TRACKERS 5  // setting this to >5 seems to result in string rendering issues! (not enough memory?)
 fix otherLocs[MAX_OTHER_TRACKERS];
 int activeLoc = 0;
 
 char callsign[] = "SPKL";
 //char callsign[] = "PONY";
+
+#define buttonDebounceLockout 100
+typedef struct {
+  int pin;
+  bool press_state = false;
+  long last_press = 0;
+  void (*handler)();
+} button_state;
+
+button_state Bbutton;
+button_state Cbutton;
+
+#define NUM_DATUMS 1
+int curDatum = 0;
 
 void setup() {
   strcpy(myLoc.callsign, callsign);
@@ -80,6 +90,10 @@ void setup() {
   pinMode(Apin, INPUT_PULLUP);
   pinMode(Bpin, INPUT_PULLUP);
   pinMode(Cpin, INPUT_PULLUP);
+  Bbutton.pin = Bpin;
+  Bbutton.handler = &cycleNextDatum;
+  Cbutton.pin = Cpin;
+  Cbutton.handler = &cycleNextTracker;
 
   // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
@@ -188,23 +202,36 @@ void transmitData() {
   lastSend = millis();
 }
 
-void loop() {
-  bool buttonPressed = !digitalRead(Cpin);
-  if (buttonPressed != buttonPressedState) {
+void pollButton(button_state& state) {
+  bool buttonPressed = !digitalRead(state.pin);
+  if (buttonPressed != state.press_state) {
     // button state change
-    if (millis() - lastButtonPress > buttonDebounceLockout) {
+    if (millis() - state.last_press > buttonDebounceLockout) {
       // state change is not noise
       if (buttonPressed) {
         // button is pressed -- trigger action
-        int count = getNumTrackers();
-        if (count > 0) {
-          activeLoc = (activeLoc + 1) % count;
-        }   
+        (*state.handler)();
       }
     }
-    lastButtonPress = millis();
+    state.last_press = millis();
   }
-  buttonPressedState = buttonPressed;  
+  state.press_state = buttonPressed;  
+}
+
+void cycleNextTracker() {
+  int count = getNumTrackers();
+  if (count > 0) {
+    activeLoc = (activeLoc + 1) % count;
+  }
+}
+
+void cycleNextDatum() {
+  curDatum = (curDatum + 1) % NUM_DATUMS;
+}
+
+void loop() {
+  pollButton(Bbutton);
+  pollButton(Cbutton);
   
   if (Serial1.available()) {
     char c = Serial1.read();
@@ -406,8 +433,11 @@ String fmtPlayaStr(fix* loc, char nofixstr[]) {
   if (loc->lat == 0 && loc->lon == 0) {
     return nofixstr;
   } else {
-    return XYStr(loc->lat, loc->lon, loc->isAccurate);
-    //return playaStr(loc->lat, loc->lon, loc->isAccurate);
+    switch (curDatum) {
+      case 0: return playaStr(loc->lat, loc->lon, loc->isAccurate);
+      // strange behavior if both datums' code on device (too close to ceiling?) [don't forget to change NUM_DATUMS]
+      //case 1: return XYStr(loc->lat, loc->lon, loc->isAccurate);
+    }
   }
 }
 
@@ -433,7 +463,7 @@ String XYStr(int32_t lat, int32_t lon, bool accurate) {
   m_dx += offset;
   m_dy += offset;
 
-  return String("x") + (int)m_dx + String(" y") + (int)m_dy + String(accurate ? "" : " same same");
+  return "x" + String((int)m_dx) + " y" + String((int)m_dy) + (accurate ? "" : " same same");
 }
 
 
