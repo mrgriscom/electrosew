@@ -4,6 +4,12 @@
 
 Adafruit_SSD1306 display = Adafruit_SSD1306();
 
+// THIS CODE IS VERY CLOSE TO THE ROM AND RAM LIMITS. AS YOU APPROACH (THOUGH STILL NOT
+// EXCEEDING) THOSE LIMITS, STRANGE BEHAVIOR STARTS TO MANIFEST, INCLUDING LOCATION
+// STRINGS NOT RENDERING TO THE DISPLAY AND INSTEAD SHOWING BLANK. EVEN WORSE, THIS
+// HAPPENS NON-DETERMINISTICALLY. OBVIOUSLY, THIS IS A SHOWSTOPPER. SO I'D ADVISE AGAINST
+// TRYING TO MAKE ANY FURTHER CHANGES TO THIS CODE. MERRY CHRISTMAS.
+
 #define Apin 9
 #define Bpin 6
 #define Cpin 5
@@ -70,8 +76,7 @@ typedef struct {
   long last_press = 0;
   void (*handler)();
 } button_state;
-
-button_state Bbutton;
+//button_state Bbutton;
 button_state Cbutton;
 
 #define NUM_DATUMS 1
@@ -90,8 +95,8 @@ void setup() {
   pinMode(Apin, INPUT_PULLUP);
   pinMode(Bpin, INPUT_PULLUP);
   pinMode(Cpin, INPUT_PULLUP);
-  Bbutton.pin = Bpin;
-  Bbutton.handler = &cycleNextDatum;
+  //Bbutton.pin = Bpin;
+  //Bbutton.handler = &cycleNextDatum;
   Cbutton.pin = Cpin;
   Cbutton.handler = &cycleNextTracker;
 
@@ -230,7 +235,7 @@ void cycleNextDatum() {
 }
 
 void loop() {
-  pollButton(Bbutton);
+  //pollButton(Bbutton);
   pollButton(Cbutton);
   
   if (Serial1.available()) {
@@ -382,6 +387,7 @@ void say(String s, String t, String u, String v) {
 */
 
 // production - afrikaburn
+// roughly center of the binnekring
 #define MAN_LAT -32327080
 #define MAN_LON  19748170
 #define PLAYA_ELEV 320.  // m
